@@ -1,0 +1,83 @@
+name: Deploy and CodeSandbox Integration
+
+on:
+  pull_request:
+    types: [opened, synchronize] # For adding CodeSandbox links to PRs
+  pull_request_target:
+    types: [closed] # For deployment after merge
+
+jobs:
+  # Job to add CodeSandbox link to PR
+  add_codesandbox_link:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Add CodeSandbox Link
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const prNumber = context.payload.pull_request.number;
+            const repo = context.repo;
+            const branch = context.payload.pull_request.head.ref;
+
+            const codesandboxUrl = `https://githubbox.com/${repo.owner}/${repo.repo}/tree/${branch}`;
+
+            const body = `### 🚀 Preview Link
+            You can preview these changes in CodeSandbox: [Open in CodeSandbox](${codesandboxUrl})
+
+            This link was automatically generated to help with code review.`;
+
+            // Check if a comment with the CodeSandbox link already exists
+            const { data: comments } = await github.rest.issues.listComments({
+              ...repo,
+              issue_number: prNumber
+            });
+
+            const existingComment = comments.find(comment => 
+              comment.body.includes('Open in CodeSandbox') && 
+              comment.user.login === 'github-actions[bot]'
+            );
+
+            if (existingComment) {
+              await github.rest.issues.updateComment({
+                ...repo,
+                comment_id: existingComment.id,
+                body: body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                ...repo,
+                issue_number: prNumber,
+                body: body
+              });
+            }
+
+  # Job to deploy after PR is merged
+  deploy:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request_target' && github.event.pull_request.merged == true
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.pull_request.base.ref }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: "18"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build project
+        run: npm run build
+
+      - name: Deploy to GitHub Pages
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          folder: build # The folder the action should deploy (for React apps, typically "build")
+          branch: gh-pages # The branch the action should deploy to
+          token: ${{ secrets.GITHUB_TOKEN }}
