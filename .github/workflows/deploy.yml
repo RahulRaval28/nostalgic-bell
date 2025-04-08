@@ -100,8 +100,22 @@ jobs:
           node-version: "18"
           cache: "npm"
 
-      - name: Install dependencies
+      - name: Check for package-lock.json
+        id: check-lockfile
+        run: |
+          if [ -f "package-lock.json" ]; then
+            echo "lockfile_exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "lockfile_exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Install dependencies with npm ci
+        if: steps.check-lockfile.outputs.lockfile_exists == 'true'
         run: npm ci
+
+      - name: Install dependencies with npm install
+        if: steps.check-lockfile.outputs.lockfile_exists == 'false'
+        run: npm install
 
       - name: Build project
         run: npm run build
